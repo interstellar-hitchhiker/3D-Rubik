@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Three.js Rubik's Cube — Auto-Solving Simulation</title>
+  <style>
+    :root {
+      --bg: #0e1117;
+      --panel: rgba(18, 24, 35, 0.86);
+      --panel-strong: rgba(25, 34, 49, 0.96);
+      --text: #ecf2ff;
+      --muted: #aebbd0;
+      --accent: #7fb3ff;
+      --danger: #ff8d8d;
+      --ok: #9dffbe;
+      --border: rgba(255,255,255,0.14);
+      --shadow: rgba(0,0,0,0.45);
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 20%, #1c2840 0%, var(--bg) 58%, #07090d 100%);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    #app {
+      position: fixed;
+      inset: 0;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    .hud {
+      position: fixed;
+      top: 18px;
+      left: 18px;
+      width: min(390px, calc(100vw - 36px));
+      max-height: calc(100vh - 36px);
+      overflow: auto;
+      box-sizing: border-box;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: var(--panel);
+      box-shadow: 0 18px 46px var(--shadow);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      user-select: none;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 19px;
+      line-height: 1.2;
+      letter-spacing: 0.2px;
+    }
+
+    .subtitle {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .section-title {
+      margin: 14px 0 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .button-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 7px;
+    }
+
+    .button-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      background: var(--panel-strong);
+      color: var(--text);
+      padding: 9px 8px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease, opacity 120ms ease;
+    }
+
+    button:hover:not(:disabled) {
+      transform: translateY(-1px);
+      border-color: rgba(127, 179, 255, 0.8);
+      background: rgba(36, 51, 76, 0.96);
+    }
+
+    button:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+
+    button:disabled {
+      opacity: 0.48;
+      cursor: not-allowed;
+    }
+
+    .primary {
+      background: linear-gradient(180deg, rgba(77, 132, 218, 0.96), rgba(46, 94, 171, 0.96));
+      border-color: rgba(160, 197, 255, 0.55);
+    }
+
+    .danger {
+      background: linear-gradient(180deg, rgba(135, 44, 50, 0.96), rgba(95, 31, 39, 0.96));
+      border-color: rgba(255, 141, 141, 0.38);
+    }
+
+    .wide {
+      grid-column: span 2;
+    }
+
+    .status {
+      margin-top: 12px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: rgba(0,0,0,0.22);
+      padding: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      min-height: 58px;
+      white-space: pre-wrap;
+    }
+
+    .status strong {
+      color: var(--text);
+    }
+
+    label {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 12px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    input[type="range"] {
+      grid-column: 1 / -1;
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .legend {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 7px;
+      margin-top: 9px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.35);
+    }
+
+    .help {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      max-width: min(380px, calc(100vw - 36px));
+      box-sizing: border-box;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      box-shadow: 0 18px 46px var(--shadow);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      user-select: none;
+    }
+
+    kbd {
+      display: inline-block;
+      min-width: 1.4em;
+      padding: 1px 5px;
+      border: 1px solid var(--border);
+      border-bottom-width: 2px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      text-align: center;
+      font-size: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    @media (max-width: 700px) {
+      .hud {
+        top: 10px;
+        left: 10px;
+        width: calc(100vw - 20px);
+        padding: 12px;
+      }
+
+      .help {
+        display: none;
+      }
+    }
+  </style>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <aside class="hud" aria-label="Rubik's cube controls">
+    <h1>3D Rubik's Cube</h1>
+    <p class="subtitle">
+      Rotate the cube with the mouse. Use the face buttons or keyboard to scramble it, then press <strong>Auto solve</strong>.
+    </p>
+
+    <div class="section-title">Face turns</div>
+    <div class="button-grid" id="moveButtons"></div>
+
+    <div class="section-title">Main controls</div>
+    <div class="button-row">
+      <button class="primary" id="scrambleBtn">Scramble</button>
+      <button class="primary" id="solveBtn">Auto solve</button>
+      <button class="danger" id="resetBtn">Reset</button>
+    </div>
+
+    <label>
+      <span>Move speed</span>
+      <span id="speedLabel">430 ms</span>
+      <input id="speedSlider" type="range" min="120" max="900" value="430" step="10" />
+    </label>
+
+    <div class="section-title">Face colours</div>
+    <div class="legend">
+      <span><i class="swatch" style="background:#e53935"></i>R</span>
+      <span><i class="swatch" style="background:#ff8f00"></i>L</span>
+      <span><i class="swatch" style="background:#ffffff"></i>U</span>
+      <span><i class="swatch" style="background:#ffd600"></i>D</span>
+      <span><i class="swatch" style="background:#1fb760"></i>F</span>
+      <span><i class="swatch" style="background:#1565c0"></i>B</span>
+    </div>
+
+    <div class="status" id="status"></div>
+  </aside>
+
+  <div class="help">
+    Keyboard: <kbd>R</kbd> <kbd>L</kbd> <kbd>U</kbd> <kbd>D</kbd> <kbd>F</kbd> <kbd>B</kbd> turn faces; hold <kbd>Shift</kbd> for inverse moves. <kbd>S</kbd> scrambles; <kbd>A</kbd> auto-solves; <kbd>Esc</kbd> resets.
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    const app = document.getElementById('app');
+    const statusEl = document.getElementById('status');
+    const moveButtonsEl = document.getElementById('moveButtons');
+    const speedSlider = document.getElementById('speedSlider');
+    const speedLabel = document.getElementById('speedLabel');
+    const scrambleBtn = document.getElementById('scrambleBtn');
+    const solveBtn = document.getElementById('solveBtn');
+    const resetBtn = document.getElementById('resetBtn');
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x0e1117, 0.035);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(5.8, 4.6, 7.2);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    app.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.rotateSpeed = 0.72;
+    controls.minDistance = 4.2;
+    controls.maxDistance = 16;
+    controls.target.set(0, 0, 0);
+
+    const ambient = new THREE.HemisphereLight(0xffffff, 0x223344, 1.4);
+    scene.add(ambient);
+
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+    keyLight.position.set(5, 8, 7);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.set(2048, 2048);
+    keyLight.shadow.camera.near = 1;
+    keyLight.shadow.camera.far = 30;
+    keyLight.shadow.camera.left = -7;
+    keyLight.shadow.camera.right = 7;
+    keyLight.shadow.camera.top = 7;
+    keyLight.shadow.camera.bottom = -7;
+    scene.add(keyLight);
+
+    const fillLight = new THREE.DirectionalLight(0x86aaff, 0.72);
+    fillLight.position.set(-5, 3, -4);
+    scene.add(fillLight);
+
+    const floor = new THREE.Mesh(
+      new THREE.CircleGeometry(6.3, 96),
+      new THREE.MeshStandardMaterial({ color: 0x0a0d13, roughness: 0.9, metalness: 0.0, transparent: true, opacity: 0.78 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -2.14;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    const colors = {
+      R: 0xe53935,
+      L: 0xff8f00,
+      U: 0xffffff,
+      D: 0xffd600,
+      F: 0x1fb760,
+      B: 0x1565c0,
+      hidden: 0x11151d
+    };
+
+    const cubieSize = 0.96;
+    const spacing = 1.045;
+    const cubelets = [];
+    let moveQueue = [];
+    let currentAnimation = null;
+    let history = [];
+    let isSolving = false;
+    let solvedAtLeastOnce = false;
+
+    const AXIS_VECTOR = {
+      x: new THREE.Vector3(1, 0, 0),
+      y: new THREE.Vector3(0, 1, 0),
+      z: new THREE.Vector3(0, 0, 1)
+    };
+
+    const BASE_MOVES = {
+      R: { axis: 'x', layer:  1, angle: -Math.PI / 2 },
+      L: { axis: 'x', layer: -1, angle:  Math.PI / 2 },
+      U: { axis: 'y', layer:  1, angle: -Math.PI / 2 },
+      D: { axis: 'y', layer: -1, angle:  Math.PI / 2 },
+      F: { axis: 'z', layer:  1, angle: -Math.PI / 2 },
+      B: { axis: 'z', layer: -1, angle:  Math.PI / 2 }
+    };
+
+    const buttonMoves = ['R', "R'", 'L', "L'", 'U', "U'", 'D', "D'", 'F', "F'", 'B', "B'"];
+
+    for (const move of buttonMoves) {
+      const btn = document.createElement('button');
+      btn.textContent = move;
+      btn.title = `Turn ${move}`;
+      btn.addEventListener('click', () => enqueueMove(move, { record: true, source: 'Manual' }));
+      moveButtonsEl.appendChild(btn);
+    }
+
+    scrambleBtn.addEventListener('click', scramble);
+    solveBtn.addEventListener('click', autoSolve);
+    resetBtn.addEventListener('click', resetCube);
+
+    speedSlider.addEventListener('input', () => {
+      speedLabel.textContent = `${speedSlider.value} ms`;
+    });
+
+    window.addEventListener('resize', onResize);
+    window.addEventListener('keydown', onKeyDown);
+
+    buildCube();
+    updateStatus('Ready. Scramble it or make your own moves.');
+    animate();
+
+    function material(hex, roughness = 0.55) {
+      return new THREE.MeshStandardMaterial({ color: hex, roughness, metalness: 0.02 });
+    }
+
+    function buildCube() {
+      clearCube();
+      const geometry = new THREE.BoxGeometry(cubieSize, cubieSize, cubieSize);
+      const edgeGeometry = new THREE.EdgesGeometry(geometry, 20);
+      const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x05070b, linewidth: 1 });
+
+      for (let x = -1; x <= 1; x++) {
+        for (let y = -1; y <= 1; y++) {
+          for (let z = -1; z <= 1; z++) {
+            const materials = [
+              material(x ===  1 ? colors.R : colors.hidden), // +x right
+              material(x === -1 ? colors.L : colors.hidden), // -x left
+              material(y ===  1 ? colors.U : colors.hidden), // +y up
+              material(y === -1 ? colors.D : colors.hidden), // -y down
+              material(z ===  1 ? colors.F : colors.hidden), // +z front
+              material(z === -1 ? colors.B : colors.hidden)  // -z back
+            ];
+
+            const cubie = new THREE.Mesh(geometry, materials);
+            cubie.position.set(x * spacing, y * spacing, z * spacing);
+            cubie.castShadow = true;
+            cubie.receiveShadow = true;
+            cubie.userData.pos = { x, y, z };
+            cubie.userData.home = { x, y, z };
+
+            const edges = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+            edges.renderOrder = 10;
+            cubie.add(edges);
+
+            scene.add(cubie);
+            cubelets.push(cubie);
+          }
+        }
+      }
+    }
+
+    function clearCube() {
+      for (const cubie of cubelets) {
+        scene.remove(cubie);
+        if (cubie.geometry) cubie.geometry.dispose();
+        if (Array.isArray(cubie.material)) cubie.material.forEach(m => m.dispose());
+        else if (cubie.material) cubie.material.dispose();
+      }
+      cubelets.length = 0;
+    }
+
+    function parseMove(notation) {
+      const face = notation[0].toUpperCase();
+      if (!BASE_MOVES[face]) throw new Error(`Unknown move: ${notation}`);
+      const suffix = notation.slice(1);
+      const base = BASE_MOVES[face];
+      let angle = base.angle;
+      if (suffix === "'") angle *= -1;
+      else if (suffix === '2') angle *= 2;
+      else if (suffix !== '') throw new Error(`Unknown move suffix: ${notation}`);
+      return { face, suffix, axis: base.axis, layer: base.layer, angle, notation };
+    }
+
+    function inverseMove(notation) {
+      const face = notation[0].toUpperCase();
+      const suffix = notation.slice(1);
+      if (suffix === "'") return face;
+      if (suffix === '2') return face + '2';
+      return face + "'";
+    }
+
+    function enqueueMove(notation, options = {}) {
+      const { record = true, source = 'Move' } = options;
+      const parsed = parseMove(notation);
+      moveQueue.push({ ...parsed, record, source });
+      if (!currentAnimation) startNextMove();
+      updateStatus(`${source}: queued ${notation}`);
+    }
+
+    function startNextMove() {
+      if (currentAnimation || moveQueue.length === 0) {
+        updateButtons();
+        return;
+      }
+
+      const spec = moveQueue.shift();
+      const selected = cubelets.filter(c => c.userData.pos[spec.axis] === spec.layer);
+      const pivot = new THREE.Group();
+      scene.add(pivot);
+      selected.forEach(cubie => pivot.attach(cubie));
+
+      currentAnimation = {
+        spec,
+        selected,
+        pivot,
+        elapsedAngle: 0,
+        started: performance.now(),
+        duration: Number(speedSlider.value)
+      };
+
+      updateButtons();
+      updateStatus(`Turning ${spec.notation}...`);
+    }
+
+    function finishMove() {
+      const anim = currentAnimation;
+      const { spec, selected, pivot } = anim;
+
+      const remaining = spec.angle - anim.elapsedAngle;
+      if (Math.abs(remaining) > 1e-7) {
+        pivot.rotateOnAxis(AXIS_VECTOR[spec.axis], remaining);
+      }
+      pivot.updateMatrixWorld(true);
+
+      selected.forEach(cubie => {
+        scene.attach(cubie);
+        snapCubie(cubie);
+        cubie.userData.pos = {
+          x: Math.round(cubie.position.x / spacing),
+          y: Math.round(cubie.position.y / spacing),
+          z: Math.round(cubie.position.z / spacing)
+        };
+      });
+
+      scene.remove(pivot);
+      currentAnimation = null;
+
+      if (spec.record) {
+        history.push(spec.notation);
+        solvedAtLeastOnce = false;
+      }
+
+      if (moveQueue.length === 0 && isSolving) {
+        isSolving = false;
+        solvedAtLeastOnce = true;
+        updateStatus('Solved by replaying the inverse move history.');
+      } else {
+        updateStatus(`Finished ${spec.notation}.`);
+      }
+
+      startNextMove();
+    }
+
+    function snapCubie(cubie) {
+      cubie.position.set(
+        Math.round(cubie.position.x / spacing) * spacing,
+        Math.round(cubie.position.y / spacing) * spacing,
+        Math.round(cubie.position.z / spacing) * spacing
+      );
+
+      const snappedRotation = new THREE.Matrix4().makeRotationFromQuaternion(cubie.quaternion);
+      const e = snappedRotation.elements;
+      const indices = [0, 1, 2, 4, 5, 6, 8, 9, 10];
+      for (const i of indices) {
+        e[i] = Math.abs(e[i]) < 0.5 ? 0 : Math.sign(e[i]);
+      }
+      // Keep the homogeneous part clean.
+      e[3] = e[7] = e[11] = e[12] = e[13] = e[14] = 0;
+      e[15] = 1;
+      cubie.quaternion.setFromRotationMatrix(snappedRotation);
+      cubie.scale.set(1, 1, 1);
+      cubie.updateMatrixWorld(true);
+    }
+
+    function scramble() {
+      if (isSolving) return;
+      const faces = ['R', 'L', 'U', 'D', 'F', 'B'];
+      const suffixes = ['', "'"];
+      const scrambleLength = 24;
+      let previousAxis = null;
+      const moves = [];
+
+      for (let i = 0; i < scrambleLength; i++) {
+        let face;
+        let axis;
+        do {
+          face = faces[Math.floor(Math.random() * faces.length)];
+          axis = BASE_MOVES[face].axis;
+        } while (axis === previousAxis);
+        previousAxis = axis;
+        const suffix = suffixes[Math.floor(Math.random() * suffixes.length)];
+        moves.push(face + suffix);
+      }
+
+      for (const move of moves) enqueueMove(move, { record: true, source: 'Scramble' });
+      updateStatus(`Scramble queued:\n${moves.join(' ')}`);
+    }
+
+    function autoSolve() {
+      if (isSolving) return;
+      if (history.length === 0 && moveQueue.length === 0 && !currentAnimation) {
+        updateStatus(solvedAtLeastOnce ? 'Already solved.' : 'No recorded moves to solve. Scramble or turn faces first.');
+        return;
+      }
+      if (currentAnimation || moveQueue.length > 0) {
+        updateStatus('Let the current move queue finish before auto-solving.');
+        return;
+      }
+
+      const solution = history.slice().reverse().map(inverseMove);
+      history = [];
+      isSolving = true;
+
+      for (const move of solution) enqueueMove(move, { record: false, source: 'Auto solve' });
+      updateStatus(`Auto-solve queued:\n${solution.join(' ')}`);
+    }
+
+    function resetCube() {
+      moveQueue.length = 0;
+      history = [];
+      isSolving = false;
+      solvedAtLeastOnce = false;
+
+      if (currentAnimation) {
+        const { selected, pivot } = currentAnimation;
+        pivot.updateMatrixWorld(true);
+        selected.forEach(cubie => scene.attach(cubie));
+        scene.remove(pivot);
+        currentAnimation = null;
+      }
+
+      buildCube();
+      updateStatus('Reset to solved state.');
+      updateButtons();
+    }
+
+    function updateButtons() {
+      const busy = Boolean(currentAnimation || moveQueue.length > 0 || isSolving);
+      solveBtn.disabled = busy && !isSolving;
+      scrambleBtn.disabled = isSolving;
+      resetBtn.disabled = false;
+    }
+
+    function updateStatus(message) {
+      const queueCount = moveQueue.length + (currentAnimation ? 1 : 0);
+      const recorded = history.length;
+      const solvingText = isSolving ? 'yes' : 'no';
+      statusEl.innerHTML = `<strong>${escapeHtml(message)}</strong>\nQueue: ${queueCount} move${queueCount === 1 ? '' : 's'} | Recorded history: ${recorded} | Solving: ${solvingText}`;
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function easeInOutCubic(t) {
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (currentAnimation) {
+        const anim = currentAnimation;
+        const now = performance.now();
+        const t = Math.min(1, (now - anim.started) / anim.duration);
+        const eased = easeInOutCubic(t);
+        const angle = anim.spec.angle * eased;
+        const delta = angle - anim.elapsedAngle;
+        anim.pivot.rotateOnAxis(AXIS_VECTOR[anim.spec.axis], delta);
+        anim.elapsedAngle = angle;
+        if (t >= 1) finishMove();
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    function onResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function onKeyDown(event) {
+      const activeTag = document.activeElement?.tagName?.toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') return;
+
+      const key = event.key.toUpperCase();
+      if (['R', 'L', 'U', 'D', 'F', 'B'].includes(key)) {
+        enqueueMove(event.shiftKey ? `${key}'` : key, { record: true, source: 'Keyboard' });
+      } else if (key === 'S') {
+        scramble();
+      } else if (key === 'A') {
+        autoSolve();
+      } else if (event.key === 'Escape') {
+        resetCube();
+      }
+    }
+  </script>
+</body>
+</html>
